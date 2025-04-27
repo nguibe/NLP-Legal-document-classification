@@ -12,7 +12,7 @@ Author: Noémie Guibé
 from datasets import Dataset
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
-from transformers import AutoTokenizer, TFAutoModelForSequenceClassification, TrainingArguments, Trainer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 import torch
 from sklearn.metrics import f1_score
 
@@ -51,7 +51,7 @@ train_df['text'] = train_df["text"].apply(lambda x: isinstance(x, dict) and x.ge
 
 # test 
 test_df = df_reduced[df_reduced['split']=='test']
-test_langs = ["fr", "de", "es"]  # whatever languages you want
+test_langs = ["fr", "de", "pl","fi"] 
 test_dfs = []
 
 for lang in test_langs:
@@ -101,10 +101,9 @@ def prepare_dataset(example):
 train_dataset = train_dataset.map(prepare_dataset)
 for lang in test_datasets:
     test_datasets[lang] = test_datasets[lang].map(prepare_dataset)
-train_dataset.set_format(type="tensorflow", columns=["input_ids", "attention_mask", "labels"])
+train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 for lang in test_datasets:
-    test_datasets[lang].set_format(type="tensorflow", columns=["input_ids", "attention_mask", "labels"])
-
+    test_datasets[lang].set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
 
 ##################### Model ###################
@@ -112,7 +111,7 @@ for lang in test_datasets:
 num_labels = len(mlb.classes_)
 
 # Load model
-model = TFAutoModelForSequenceClassification.from_pretrained(
+model = AutoModelForSequenceClassification.from_pretrained(
     "xlm-roberta-base",
     problem_type="multi_label_classification",
     num_labels=num_labels,
@@ -123,7 +122,7 @@ model = TFAutoModelForSequenceClassification.from_pretrained(
 # Define the training arguments
 training_args = TrainingArguments(
     output_dir="./xlm-roberta-eurovoc",
-    evaluation_strategy="epoch",
+    eval_strategy="epoch",
     save_strategy="epoch",
     learning_rate=2e-5,
     per_device_train_batch_size=8,
