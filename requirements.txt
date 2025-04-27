@@ -1,6 +1,6 @@
 transformers==4.51.3
-tensorflow==2.8.0
-torch==2.7.0  # Or 'torch==2.7.0+cu117' for CUDA support
+tensorflow==2.18.0
+torch==2.7.0  # Or 'torch==2.7.0' for CUDA support
 datasets==3.5.0
 scikit-learn==1.0.2
 huggingface_hub==0.12.0
