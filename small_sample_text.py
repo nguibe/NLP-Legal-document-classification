@@ -207,7 +207,7 @@ def dataset_to_tf(dataset):
                 "input_ids": tf.TensorSpec(shape=(512,), dtype=tf.int64),
                 "attention_mask": tf.TensorSpec(shape=(512,), dtype=tf.int64)
             },
-            tf.TensorSpec(shape=(len(mlb.classes_),), dtype=tf.float16)
+            tf.TensorSpec(shape=(len(mlb.classes_),), dtype=tf.float32)
         )
     )
 

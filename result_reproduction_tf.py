@@ -125,10 +125,10 @@ def track_training_time_and_memory(model, train_dataset, batch_size=8, epochs=5)
 
 ############################## DATA PREPARATION ########################################
 # ----------- Train and test datasets with one level of labels ----------------
-# Keep only level 3 labels
+# Keep only level 1 labels
 start_time = time.time()
-df['level_3_labels'] = df['eurovoc_concepts'].apply(lambda d: d['level_3'] if 'level_3' in d else [])
-print(f"[INFO] Level 3 labels extracted in {time.time() - start_time:.2f} seconds")
+df['level_1_labels'] = df['eurovoc_concepts'].apply(lambda d: d['level_1'] if 'level_1' in d else [])
+print(f"[INFO] Level 1 labels extracted in {time.time() - start_time:.2f} seconds")
 print(df.head())
 
 # Split dataset into train and test sets
@@ -159,12 +159,12 @@ print(final_test_df.head())
 # ----------- Label encoding ----------------
 start_time = time.time()
 mlb = MultiLabelBinarizer()
-mlb.fit(df["level_3_labels"])
+mlb.fit(df["level_1_labels"])
 print(f"[INFO] Label encoding completed in {time.time() - start_time:.2f} seconds")
 
 # Transform labels for train and test
-train_df["label_vector"] = [row.tolist() for row in mlb.transform(train_df["level_3_labels"])]
-final_test_df["label_vector"] = [row.tolist() for row in mlb.transform(final_test_df["level_3_labels"])]
+train_df["label_vector"] = [row.tolist() for row in mlb.transform(train_df["level_1_labels"])]
+final_test_df["label_vector"] = [row.tolist() for row in mlb.transform(final_test_df["level_1_labels"])]
 print(f"[INFO] Label transformation completed in {time.time() - start_time:.2f} seconds")
 
 # Inspecting label vector for a given row
