@@ -123,10 +123,10 @@ def track_training_time_and_memory(model, train_dataset, batch_size=8, epochs=5)
 
 ############################## DATA PREPARATION ########################################
 # ----------- Train and test datasets with one level of labels ----------------
-# Keep only level 3 labels
+# Keep only level 1 labels
 start_time = time.time()
-df['level_3_labels'] = df['eurovoc_concepts'].apply(lambda d: d['level_3'] if 'level_3' in d else [])
-print(f"[INFO] Level 3 labels extracted in {time.time() - start_time:.2f} seconds")
+df['level_1_labels'] = df['eurovoc_concepts'].apply(lambda d: d['level_1'] if 'level_1' in d else [])
+print(f"[INFO] Level 1 labels extracted in {time.time() - start_time:.2f} seconds")
 print(df.head())
 
 # Split dataset into train and test sets
@@ -161,17 +161,17 @@ small_train_df = train_df.sample(5, random_state=42)  # Randomly select 5 sample
 small_test_df = final_test_df.sample(5, random_state=42)  # Randomly select 5 samples from test set
 
 # You could also print out the data to see the sample
-print(small_train_df[['text', 'level_3_labels']])
-print(small_test_df[['text', 'level_3_labels']])
+print(small_train_df[['text', 'level_1_labels']])
+print(small_test_df[['text', 'level_1_labels']])
 
 # Now, proceed with the same preprocessing steps for this small sample:
 # Encode labels
 start_time = time.time()
 mlb = MultiLabelBinarizer()
-mlb.fit(df["level_3_labels"])
+mlb.fit(df["level_1_labels"])
 
-small_train_df["label_vector"] = [row.tolist() for row in mlb.transform(small_train_df["level_3_labels"])]
-small_test_df["label_vector"] = [row.tolist() for row in mlb.transform(small_test_df["level_3_labels"])]
+small_train_df["label_vector"] = [row.tolist() for row in mlb.transform(small_train_df["level_1_labels"])]
+small_test_df["label_vector"] = [row.tolist() for row in mlb.transform(small_test_df["level_1_labels"])]
 print(f"[INFO] Label encoding completed in {time.time() - start_time:.2f} seconds")
 
 # Tokenization
@@ -207,7 +207,7 @@ def dataset_to_tf(dataset):
                 "input_ids": tf.TensorSpec(shape=(512,), dtype=tf.int64),
                 "attention_mask": tf.TensorSpec(shape=(512,), dtype=tf.int64)
             },
-            tf.TensorSpec(shape=(len(mlb.classes_),), dtype=tf.float32)
+            tf.TensorSpec(shape=(len(mlb.classes_),), dtype=tf.float16)
         )
     )
 
@@ -231,13 +231,20 @@ training_time, initial_memory, final_memory = track_training_time_and_memory(mod
 #results = evaluate_model(model, small_test_tf_dataset)
 #print("Test results on small sample:", results)
 
-for lang, tf_dataset in test_tf_datasets.items():
-    start_time = time.time()
-    #results = model.evaluate(tf_dataset.batch(8))
-    results = evaluate_model(model, test_tf_dataset[lang])
-    print(f"[INFO] Evaluation for {lang} completed in {time.time() - start_time:.2f} seconds")
+for lang in test_langs:
+    lang_specific_df = small_test_df[small_test_df['lang'] == lang]
+    if lang_specific_df.empty:
+        print(f"[INFO] No samples available for {lang}. Skipping evaluation.")
+        continue  # Skip to next language
+    
+    # Proceed with tokenization and evaluation as usual
+    lang_specific_dataset = Dataset.from_pandas(lang_specific_df[["text", "label_vector", "lang"]])
+    lang_specific_dataset = lang_specific_dataset.map(tokenize_and_format_tf, batched=True)
+    lang_specific_tf_dataset = dataset_to_tf(lang_specific_dataset)
+
+    results = evaluate_model(model, lang_specific_tf_dataset)
+    print(f"[INFO] Evaluation for {lang} completed")
     print(f"Language: {lang}")
     print("Evaluation results:", results)
-
 
 

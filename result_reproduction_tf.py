@@ -11,8 +11,6 @@ import psutil
 import numpy as np
 
 
-print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
-
 # Change to your project directory
 os.chdir('NLP-Legal-document-classification')
 
@@ -53,14 +51,20 @@ def evaluate_model(model, test_dataset, batch_size=8):
     y_true = []
     y_pred = []
     
-    for batch in test_dataset.batch(batch_size):
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        labels = batch['labels']
+    or batch in test_dataset.batch(batch_size):
+        #input_ids = batch['input_ids']
+        #attention_mask = batch['attention_mask']
+        #(input_ids, attention_mask), labels = batch
+        #labels = batch['labels']
+        inputs, labels = batch
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
         
         # Get model predictions
-        logits = model(input_ids, attention_mask=attention_mask)[0]
-        predictions = tf.sigmoid(logits.logits).numpy()
+        logits = model(input_ids, attention_mask=attention_mask)[0]  # Directly access the first element
+        predictions = tf.sigmoid(logits).numpy()  # Apply sigmoid to get probabilities
+        #logits = model(input_ids, attention_mask=attention_mask)[0]
+        #predictions = tf.sigmoid(logits.logits).numpy()
         
         y_true.extend(labels.numpy())
         y_pred.extend(predictions)
@@ -262,11 +266,19 @@ training_time, initial_memory, final_memory = track_training_time_and_memory(mod
 
 
 # ----------- Evaluation ----------------
-for lang, tf_dataset in test_tf_datasets.items():
-    start_time = time.time()
-    #results = model.evaluate(tf_dataset.batch(8))
-    results = evaluate_model(model, test_tf_dataset[lang])
-    print(f"[INFO] Evaluation for {lang} completed in {time.time() - start_time:.2f} seconds")
+for lang in test_langs:
+    lang_specific_df = test_tf_dataset[test_tf_dataset['lang'] == lang]
+    if lang_specific_df.empty:
+        print(f"[INFO] No samples available for {lang}. Skipping evaluation.")
+        continue  # Skip to next language
+    
+    # Proceed with tokenization and evaluation as usual
+    lang_specific_dataset = Dataset.from_pandas(lang_specific_df[["text", "label_vector", "lang"]])
+    lang_specific_dataset = lang_specific_dataset.map(tokenize_and_format_tf, batched=True)
+    lang_specific_tf_dataset = dataset_to_tf(lang_specific_dataset)
+
+    results = evaluate_model(model, lang_specific_tf_dataset)
+    print(f"[INFO] Evaluation for {lang} completed")
     print(f"Language: {lang}")
     print("Evaluation results:", results)
 
