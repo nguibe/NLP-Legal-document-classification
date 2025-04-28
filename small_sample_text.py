@@ -11,16 +11,12 @@ import psutil
 import numpy as np
 
 
-print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
-
 # Change to your project directory
-os.chdir('NLP-Legal-document-classification')
-
-# Log the start time for data loading
-start_time = time.time()
-print(f"[INFO] Starting to load the dataset...")
+#os.chdir('NLP-Legal-document-classification')
 
 # Load the dataset
+start_time = time.time()
+print(f"[INFO] Starting to load the dataset...")
 df = pd.read_parquet('data/dataset/multi_eurlex_reduced.parquet', engine='pyarrow')
 print(f"[INFO] Dataset loaded in {time.time() - start_time:.2f} seconds")
 
@@ -54,13 +50,19 @@ def evaluate_model(model, test_dataset, batch_size=8):
     y_pred = []
     
     for batch in test_dataset.batch(batch_size):
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        labels = batch['labels']
+        #input_ids = batch['input_ids']
+        #attention_mask = batch['attention_mask']
+        #(input_ids, attention_mask), labels = batch
+        #labels = batch['labels']
+        inputs, labels = batch
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
         
         # Get model predictions
-        logits = model(input_ids, attention_mask=attention_mask)[0]
-        predictions = tf.sigmoid(logits.logits).numpy()
+        logits = model(input_ids, attention_mask=attention_mask)[0]  # Directly access the first element
+        predictions = tf.sigmoid(logits).numpy()  # Apply sigmoid to get probabilities
+        #logits = model(input_ids, attention_mask=attention_mask)[0]
+        #predictions = tf.sigmoid(logits.logits).numpy()
         
         y_true.extend(labels.numpy())
         y_pred.extend(predictions)
@@ -152,40 +154,30 @@ final_test_df = pd.concat(test_dfs, ignore_index=True)
 print(f"[INFO] Combined test set in {time.time() - start_time:.2f} seconds")
 print(final_test_df.head())
 
-# ----------- Label encoding ----------------
+
+
+# Extract a small subset of data (e.g., 5 examples for quick testing)
+small_train_df = train_df.sample(5, random_state=42)  # Randomly select 5 samples from training set
+small_test_df = final_test_df.sample(5, random_state=42)  # Randomly select 5 samples from test set
+
+# You could also print out the data to see the sample
+print(small_train_df[['text', 'level_3_labels']])
+print(small_test_df[['text', 'level_3_labels']])
+
+# Now, proceed with the same preprocessing steps for this small sample:
+# Encode labels
 start_time = time.time()
 mlb = MultiLabelBinarizer()
 mlb.fit(df["level_3_labels"])
+
+small_train_df["label_vector"] = [row.tolist() for row in mlb.transform(small_train_df["level_3_labels"])]
+small_test_df["label_vector"] = [row.tolist() for row in mlb.transform(small_test_df["level_3_labels"])]
 print(f"[INFO] Label encoding completed in {time.time() - start_time:.2f} seconds")
 
-# Transform labels for train and test
-train_df["label_vector"] = [row.tolist() for row in mlb.transform(train_df["level_3_labels"])]
-final_test_df["label_vector"] = [row.tolist() for row in mlb.transform(final_test_df["level_3_labels"])]
-print(f"[INFO] Label transformation completed in {time.time() - start_time:.2f} seconds")
+# Tokenization
+small_train_dataset = Dataset.from_pandas(small_train_df[["text", "label_vector"]])
+small_test_dataset = Dataset.from_pandas(small_test_df[["text", "label_vector"]])
 
-# Inspecting label vector for a given row
-row_index = 5  # Change to the row you want to inspect
-label_vector = train_df["label_vector"].iloc[row_index]
-active_labels = [(i, mlb.classes_[i]) for i, val in enumerate(label_vector) if val == 1]
-
-print(f"Active labels for row {row_index}:")
-for idx, label in active_labels:
-    print(f"Index: {idx}, Label: {label}")
-
-# Check same label index in test set
-label_id = "1810"
-label_index = list(mlb.classes_).index(label_id)
-matching_indices = [i for i, row in enumerate(final_test_df["label_vector"]) if row[label_index] == 1]
-row_index = matching_indices[0]  
-label_vector = final_test_df["label_vector"].iloc[row_index]
-
-active_labels = [(i, mlb.classes_[i]) for i, val in enumerate(label_vector) if val == 1]
-
-print(f"Active labels for row {row_index}:")
-for idx, label in active_labels:
-    print(f"Index: {idx}, Label: {label}")
-
-# ----------- Tokenization ----------------
 start_time = time.time()
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 print(f"[INFO] Tokenizer loaded in {time.time() - start_time:.2f} seconds")
@@ -195,22 +187,11 @@ def tokenize_and_format_tf(batch):
     encodings['labels'] = batch['label_vector']
     return encodings
 
-# Tokenizing the train and test datasets
-start_time = time.time()
-train_dataset = Dataset.from_pandas(train_df[["text", "label_vector"]])
-test_datasets = {lang: Dataset.from_pandas(df[["text", "label_vector"]]) for lang, df in final_test_df.groupby("lang")}
+# Tokenize the small sample datasets
+small_train_dataset = small_train_dataset.map(tokenize_and_format_tf, batched=True)
+small_test_dataset = small_test_dataset.map(tokenize_and_format_tf, batched=True)
 
-train_dataset = train_dataset.map(tokenize_and_format_tf, batched=True)
-for lang in test_datasets:
-    test_datasets[lang] = test_datasets[lang].map(tokenize_and_format_tf, batched=True)
-print(f"[INFO] Tokenization completed in {time.time() - start_time:.2f} seconds")
-
-# Inspect the tokenized data
-print("Original Text:", train_dataset['text'][0])
-print("Token IDs:", train_dataset["input_ids"][0])
-print("Tokens:", tokenizer.convert_ids_to_tokens(train_dataset["input_ids"][0]))
-
-# ----------- Convert datasets to TensorFlow Dataset ----------------
+# Convert to TensorFlow datasets
 def dataset_to_tf(dataset):
     def gen():
         for example in dataset:
@@ -230,38 +211,26 @@ def dataset_to_tf(dataset):
         )
     )
 
-# Convert both train and test datasets to TensorFlow Dataset
-start_time = time.time()
-train_tf_dataset = dataset_to_tf(train_dataset)
-test_tf_datasets = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
-print(f"[INFO] Conversion to TensorFlow Dataset completed in {time.time() - start_time:.2f} seconds")
 
+small_train_tf_dataset = dataset_to_tf(small_train_dataset)
+small_test_tf_dataset = dataset_to_tf(small_test_dataset)
 
-############################## MODEL ########################################
-
-# ----------- Model Initialization ----------------
-start_time = time.time()
+# Initialize the model again for small testing
 num_labels = len(mlb.classes_)
 model = TFAutoModelForSequenceClassification.from_pretrained(
     'xlm-roberta-base', num_labels=num_labels, problem_type='multi_label_classification'
 )
-print(f"[INFO] Model initialized in {time.time() - start_time:.2f} seconds")
-
-# Compile the model with appropriate loss and optimizer
-start_time = time.time()
 model.compile(optimizer='adam',
               loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
               metrics=tf.keras.metrics.AUC(multi_label=True))
-print(f"[INFO] Model compiled in {time.time() - start_time:.2f} seconds")
 
-# ----------- Training ----------------
-#start_time = time.time()
-#model.fit(train_tf_dataset.batch(8), epochs=5)
-#print(f"[INFO] Training completed in {time.time() - start_time:.2f} seconds")
-training_time, initial_memory, final_memory = track_training_time_and_memory(model, train_tf_dataset)
+# Training the model on the small dataset (limit to 1 epoch for quick testing)
+training_time, initial_memory, final_memory = track_training_time_and_memory(model, small_train_tf_dataset, epochs=1)
 
+# Evaluation on the small test dataset
+#results = evaluate_model(model, small_test_tf_dataset)
+#print("Test results on small sample:", results)
 
-# ----------- Evaluation ----------------
 for lang, tf_dataset in test_tf_datasets.items():
     start_time = time.time()
     #results = model.evaluate(tf_dataset.batch(8))
@@ -271,10 +240,4 @@ for lang, tf_dataset in test_tf_datasets.items():
     print("Evaluation results:", results)
 
 
-#r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time = evaluate_model(model, test_tf_datasets["en"])
 
-# ---- Model Size ----
-
-# Get the size of the model in MB
-model_size = sum(p.numel() for p in model.parameters()) * 4 / 1024 ** 2  # size in MB (approx.)
-print(f"Model size: {model_size:.2f} MB")
