@@ -95,6 +95,23 @@ def evaluate_model(model, test_dataset, batch_size=32):
     
     return r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time
 
+def freeze_transformer_layers(model, N):
+    """
+    Freezes the first N encoder layers of the XLM-Roberta transformer.
+    
+    Parameters:
+        model (tf.keras.Model): The TensorFlow HuggingFace model.
+        N (int): Number of transformer layers to freeze.
+    """
+    try:
+        encoder = model.roberta.encoder.layer
+    except AttributeError:
+        raise ValueError("Expected model to have `roberta.encoder.layer` structure.")
+
+    for i in range(N):
+        encoder[i].trainable = False
+    print(f"[INFO] Successfully froze first {N} transformer layers.")
+
 # Function to track training time and memory usage
 def track_training_time_and_memory(model, train_dataset, batch_size=8, epochs=2):
     # Track training time
@@ -156,8 +173,8 @@ final_test_df = pd.concat(test_dfs, ignore_index=True)
 print(f"[INFO] Combined test set in {time.time() - start_time:.2f} seconds")
 print(final_test_df.head())
 
-train_df = train_df.sample(50, random_state=42)  # Randomly select 5 samples from training set
-final_test_df = final_test_df.sample(10, random_state=42)
+train_df = train_df.sample(5000, random_state=42)  # Randomly select 5 samples from training set
+final_test_df = final_test_df.sample(1000, random_state=42)
 
 # ----------- Label encoding ----------------
 start_time = time.time()
@@ -253,6 +270,12 @@ model = TFAutoModelForSequenceClassification.from_pretrained(
     'xlm-roberta-base', num_labels=num_labels, problem_type='multi_label_classification'
 )
 print(f"[INFO] Model initialized in {time.time() - start_time:.2f} seconds")
+
+# Freeze the first N transformer blocks (e.g., N = 6)
+freeze_transformer_layers(model, N=6)
+
+for i, layer in enumerate(model.roberta.encoder.layer):
+    print(f"Layer {i} trainable: {layer.trainable}")
 
 # Compile the model with appropriate loss and optimizer
 start_time = time.time()
