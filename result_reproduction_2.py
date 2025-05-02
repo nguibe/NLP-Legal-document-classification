@@ -10,9 +10,11 @@ import time
 import psutil
 import numpy as np
 
+n_frozen_layer=12
 
 # Change to your project directory
-os.chdir('NLP-Legal-document-classification')
+if not os.getcwd().endswith('NLP-Legal-document-classification'):
+    os.chdir('NLP-Legal-document-classification')
 
 # Log the start time for data loading
 start_time = time.time()
@@ -158,7 +160,7 @@ print(train_df.head())
 test_df = df[df['split'] == 'test']
 
 # Log test dataset filtering
-test_langs = ["fr", "de", "pl", 'fi'] 
+test_langs = ["en","fr", "de", "pl", 'fi'] 
 test_dfs = []
 for lang in test_langs:
     # Filter rows by language
@@ -271,11 +273,15 @@ model = TFAutoModelForSequenceClassification.from_pretrained(
 )
 print(f"[INFO] Model initialized in {time.time() - start_time:.2f} seconds")
 
+# Save the pretrained model weights for later analysis
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+model.save_pretrained(f"model/saved_model_pretrained_{timestamp}")
+
 # Freeze the first N transformer blocks (e.g., N = 6)
-freeze_transformer_layers(model, N=6)
+freeze_transformer_layers(model, N=n_frozen_layer)
 
 for i, layer in enumerate(model.roberta.encoder.layer):
-    print(f"Layer {i} trainable: {layer.trainable}")
+    print(f"{n_frozen_layer} were frozen: \n Layer {i} trainable: {layer.trainable}")
 
 # Compile the model with appropriate loss and optimizer
 start_time = time.time()
@@ -289,7 +295,10 @@ print(f"[INFO] Model compiled in {time.time() - start_time:.2f} seconds")
 #model.fit(train_tf_dataset.batch(8), epochs=5)
 #print(f"[INFO] Training completed in {time.time() - start_time:.2f} seconds")
 training_time, initial_memory, final_memory = track_training_time_and_memory(model, train_tf_dataset)
-model.save_pretrained("model/saved_model")
+
+# Save the model with the timestamp
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+model.save_pretrained(f"model/saved_model_retrained_{timestamp}")
 
 # ----------- Evaluation ----------------
 for lang in test_langs:

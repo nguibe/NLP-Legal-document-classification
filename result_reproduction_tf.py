@@ -12,7 +12,8 @@ import numpy as np
 
 
 # Change to your project directory
-os.chdir('NLP-Legal-document-classification')
+if not os.getcwd().endswith('NLP-Legal-document-classification'):
+    os.chdir('NLP-Legal-document-classification')
 
 # Log the start time for data loading
 start_time = time.time()
@@ -141,7 +142,7 @@ print(train_df.head())
 test_df = df[df['split'] == 'test']
 
 # Log test dataset filtering
-test_langs = ["fr", "de", "pl", 'fi'] 
+test_langs = ["en","fr", "de", "pl", 'fi'] 
 test_dfs = []
 for lang in test_langs:
     # Filter rows by language
@@ -156,8 +157,8 @@ final_test_df = pd.concat(test_dfs, ignore_index=True)
 print(f"[INFO] Combined test set in {time.time() - start_time:.2f} seconds")
 print(final_test_df.head())
 
-train_df = train_df.sample(50, random_state=42)  # Randomly select 5 samples from training set
-final_test_df = final_test_df.sample(10, random_state=42)
+train_df = train_df.sample(1000, random_state=42)  # Randomly select 5 samples from training set
+final_test_df = final_test_df.sample(5000, random_state=42)
 
 # ----------- Label encoding ----------------
 start_time = time.time()
@@ -254,6 +255,10 @@ model = TFAutoModelForSequenceClassification.from_pretrained(
 )
 print(f"[INFO] Model initialized in {time.time() - start_time:.2f} seconds")
 
+# Save the pretrained model weights for later analysis
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+model.save_pretrained(f"model/saved_model_pretrained_{timestamp}")
+
 # Compile the model with appropriate loss and optimizer
 start_time = time.time()
 model.compile(optimizer='adam',
@@ -266,7 +271,10 @@ print(f"[INFO] Model compiled in {time.time() - start_time:.2f} seconds")
 #model.fit(train_tf_dataset.batch(8), epochs=5)
 #print(f"[INFO] Training completed in {time.time() - start_time:.2f} seconds")
 training_time, initial_memory, final_memory = track_training_time_and_memory(model, train_tf_dataset)
-model.save_pretrained("model/saved_model")
+
+# Save the model with the timestamp
+timestamp = time.strftime("%Y%m%d-%H%M%S")
+model.save_pretrained(f"model/saved_model_retrained_{timestamp}")
 
 # ----------- Evaluation ----------------
 for lang in test_langs:
@@ -274,11 +282,8 @@ for lang in test_langs:
     if lang_specific_dataset is None:
         print(f"[INFO] No dataset found for {lang}. Skipping.")
         continue
-
+    print(f"[INFO] Evaluation for {lang} completed \n Evaluation results")
     results = evaluate_model(model, lang_specific_dataset)
-    print(f"[INFO] Evaluation for {lang} completed")
-    print(f"Language: {lang}")
-    print("Evaluation results:", results)
 
 
 #r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time = evaluate_model(model, test_tf_datasets["en"])
