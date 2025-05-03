@@ -8,7 +8,7 @@ This project is part of the "Natural Language Processing" course. Based on a cho
 This project investigates **multilingual zero-/one-shot classification** of legal documents based on the [MultiEURLEX dataset](https://huggingface.co/datasets/multi_eurlex), following the framework and findings of:
 
 > **Chalkidis et al. (2021)** – *"MultiEURLEX: A Multilingual and Multi-label Legal Document Classification Dataset for Zero-shot Cross-lingual Transfer"*  
-> [ACL Anthology link](https://aclanthology.org/2021.acl-long.61)
+> [arxiv link]((https://arxiv.org/abs/2109.00904)
 
 Their work highlights the limitations of standard multilingual fine-tuning for legal classification across languages, especially in low-resource or typologically distant languages. The authors show that adaptation strategies can help recover or boost multilingual generalization.
 
