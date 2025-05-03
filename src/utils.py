@@ -7,6 +7,30 @@ import psutil
 import tensorflow as tf
 from transformers import AutoTokenizer, TFAutoModel, AutoConfig
 
+LABEL_DESCRIPTIONS = {
+    '100142': 'politics',
+    '100143': 'international relations',
+    '100144': 'EUROPEAN UNION',
+    '100145': 'law',
+    '100146': 'economics',
+    '100147': 'trade',
+    '100148': 'finance',
+    '100149': 'social questions',
+    '100150': 'education and communications',
+    '100151': 'science',
+    '100152': 'business and competition',
+    '100153': 'employment and working conditions',
+    '100154': 'transport',
+    '100155': 'environment',
+    '100156': 'agriculture, forestry and fisheries',
+    '100157': 'agri-foodstuffs',
+    '100158': 'production, technology and research',
+    '100159': 'energy',
+    '100160': 'industry',
+    '100161': 'geography',
+    '100162': 'international organisations'
+}
+
 
 def r_precision(y_true, y_pred, top_k=10):
     """
@@ -213,3 +237,12 @@ def predict_labels_batch(texts, tokenizer, model, label_embeddings, top_k=5):
     sims = tf.matmul(doc_embeddings, label_embeddings, transpose_b=True)
     top_k_scores, top_k_indices = tf.math.top_k(sims, k=top_k)
     return top_k_indices.numpy()
+
+
+def generate_prompt(text, prompt_type="generic"):
+    if prompt_type == "guided":
+        return (
+            f"This legal document is about: {text}. "
+            f"Relevant categories include: {', '.join(LABEL_DESCRIPTIONS.values())}. Which ones apply?"
+        )
+    return f"This legal document discusses the following topics: {text}. What legal categories apply?"
