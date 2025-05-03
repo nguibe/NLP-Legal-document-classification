@@ -23,6 +23,31 @@ print(f"[INFO] Starting to load the dataset...")
 df = pd.read_parquet('https://minio.lab.sspcloud.fr/nguibe/NLP/multi_eurlex_reduced.parquet', engine='pyarrow')
 print(f"[INFO] Dataset loaded in {time.time() - start_time:.2f} seconds")
 
+LABEL_DESCRIPTIONS = {
+    '100142': 'politics',
+    '100143': 'international relations',
+    '100144': 'EUROPEAN UNION',
+    '100145': 'law',
+    '100146': 'economics',
+    '100147': 'trade',
+    '100148': 'finance',
+    '100149': 'social questions',
+    '100150': 'education and communications',
+    '100151': 'science',
+    '100152': 'business and competition',
+    '100153': 'employment and working conditions',
+    '100154': 'transport',
+    '100155': 'environment',
+    '100156': 'agriculture, forestry and fisheries',
+    '100157': 'agri-foodstuffs',
+    '100158': 'production, technology and research',
+    '100159': 'energy',
+    '100160': 'industry',
+    '100161': 'geography',
+    '100162': 'international organisations'
+    
+}
+
 ################## FUNCTIONS ################
 # Define R-Precision computation
 def r_precision(y_true, y_pred, top_k=10):
@@ -200,7 +225,7 @@ print(f"[INFO] Tokenizer loaded in {time.time() - start_time:.2f} seconds")
 
 def tokenize_with_prompt(batch):
     prompt_texts = [
-        f"This legal document discusses the following topics: {text}. What legal categories apply?"
+        f"This legal document is about: {text}. Relevant categories include: {', '.join(LABEL_DESCRIPTIONS.values())}. Which ones apply?"
         for text in batch['text']
     ]
     encodings = tokenizer(prompt_texts, padding='max_length', truncation=True, max_length=512)

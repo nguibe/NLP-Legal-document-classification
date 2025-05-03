@@ -12,7 +12,7 @@ import os
 MODEL_NAME = 'xlm-roberta-base'
 TOP_K = 5
 BATCH_SIZE = 32
-EVAL_LANG = 'pl'  # Language to evaluate on
+EVAL_LANG = 'en'  # Language to evaluate on
 # ------------------------------------------
 
 # Change to your project directory
