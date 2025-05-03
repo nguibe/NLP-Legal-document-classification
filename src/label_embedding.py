@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, TFAutoModel
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.metrics import f1_score, label_ranking_average_precision_score
 from tqdm import tqdm
+import os
 
 # ----------------- CONFIG -----------------
 MODEL_NAME = 'xlm-roberta-base'
@@ -13,6 +14,10 @@ TOP_K = 5
 BATCH_SIZE = 32
 EVAL_LANG = 'fr'  # Language to evaluate on
 # ------------------------------------------
+
+# Change to your project directory
+if not os.getcwd().endswith('NLP-Legal-document-classification'):
+    os.chdir('NLP-Legal-document-classification')
 
 # Load label descriptions and restrict to English
 keys_to_keep = ['text', 'labels']
