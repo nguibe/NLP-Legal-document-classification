@@ -1,4 +1,3 @@
-
 import os
 import time
 import psutil
@@ -8,8 +7,12 @@ import tensorflow as tf
 from datasets import Dataset
 from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.metrics import f1_score, label_ranking_average_precision_score
-from src.utils import evaluate_model, track_training_time_and_memory, freeze_transformer_layers
+
+from src.utils import (
+    evaluate_model,
+    track_training_time_and_memory,
+    freeze_transformer_layers,
+)
 
 def run_training_pipeline_with_freezing(
     df,
@@ -19,32 +22,33 @@ def run_training_pipeline_with_freezing(
     epochs=2,
     n_frozen_layer=12
 ):
-
-
     test_langs = ["en", "fr", "de", "pl", "fi"]
 
+    # Preprocessing
     df['level_1_labels'] = df['eurovoc_concepts'].apply(lambda d: d.get('level_1', []))
 
     train_df = df[df['split'] == 'train'].copy()
-    train_df.loc[:, 'text'] = train_df['text'].apply(lambda x: x.get("en") if isinstance(x, dict) else "")
+    train_df['text'] = train_df['text'].apply(lambda x: x.get("en") if isinstance(x, dict) else "")
 
     test_df = df[df['split'] == 'test']
     test_dfs = []
     for lang in test_langs:
         df_lang = test_df[test_df["text"].apply(lambda x: isinstance(x, dict) and lang in x)].copy()
-        df_lang.loc[:, 'text'] = df_lang['text'].apply(lambda x: x[lang])
-        df_lang["lang"] = lang
+        df_lang['text'] = df_lang['text'].apply(lambda x: x[lang])
+        df_lang['lang'] = lang
         test_dfs.append(df_lang)
     final_test_df = pd.concat(test_dfs, ignore_index=True)
 
     train_df = train_df.sample(train_sample_size, random_state=42)
     final_test_df = final_test_df.sample(test_sample_size, random_state=42)
 
+    # Label binarization
     mlb = MultiLabelBinarizer()
     mlb.fit(df["level_1_labels"])
     train_df["label_vector"] = list(map(lambda x: x.astype(np.float32), mlb.transform(train_df["level_1_labels"])))
     final_test_df["label_vector"] = list(map(lambda x: x.astype(np.float32), mlb.transform(final_test_df["level_1_labels"])))
 
+    # Tokenization
     tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 
     def tokenize(batch):
@@ -76,9 +80,10 @@ def run_training_pipeline_with_freezing(
             )
         )
 
-    train_tf_dataset = dataset_to_tf(train_dataset).batch(batch_size)
-    test_tf_datasets = {lang: dataset_to_tf(ds).batch(batch_size) for lang, ds in test_datasets.items()}
+    train_tf_dataset = dataset_to_tf(train_dataset)
+    test_tf_datasets = {lang: dataset_to_tf(ds) for lang, ds in test_datasets.items()}
 
+    # Model setup
     num_labels = len(mlb.classes_)
     model = TFAutoModelForSequenceClassification.from_pretrained(
         'xlm-roberta-base',
@@ -86,49 +91,31 @@ def run_training_pipeline_with_freezing(
         problem_type='multi_label_classification'
     )
 
-    freeze_transformer_layers(model, N=n_frozen_layer)
+    if n_frozen_layer > 0:
+        freeze_transformer_layers(model, N=n_frozen_layer)
 
-    model.compile(optimizer='adam',
-                  loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-                  metrics=tf.keras.metrics.AUC(multi_label=True))
+    model.compile(
+        optimizer='adam',
+        loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+        metrics=[tf.keras.metrics.AUC(multi_label=True)]
+    )
 
-    # Training time and memory tracking
-    start_time = time.time()
-    process = psutil.Process(os.getpid())
-    initial_memory = process.memory_info().rss / 1024 ** 2
-    model.fit(train_tf_dataset, epochs=epochs)
-    final_memory = process.memory_info().rss / 1024 ** 2
-    training_time = time.time() - start_time
+    # Training with memory/time tracking (from utils)
+    training_time, initial_memory, final_memory = track_training_time_and_memory(
+        model, train_tf_dataset, batch_size=batch_size, epochs=epochs
+    )
 
-    def r_precision(y_true, y_pred, top_k=10):
-        return np.mean([
-            np.sum(y_true[i][np.argsort(y_pred[i])[-top_k:]]) / top_k
-            for i in range(len(y_true))
-        ])
-
-    def evaluate_model(model, dataset):
-        y_true, y_pred = [], []
-        for inputs, labels in dataset:
-            logits = model(inputs["input_ids"], attention_mask=inputs["attention_mask"])[0]
-            preds = tf.sigmoid(logits).numpy()
-            y_true.extend(labels.numpy())
-            y_pred.extend(preds)
-        y_true = np.array(y_true)
-        y_pred = np.array(y_pred)
-        r_prec = r_precision(y_true, y_pred)
-        micro_f1 = f1_score(y_true, y_pred > 0.5, average='micro', zero_division=0)
-        macro_f1 = f1_score(y_true, y_pred > 0.5, average='macro', zero_division=0)
-        lrap = label_ranking_average_precision_score(y_true, y_pred)
-        return r_prec, micro_f1, macro_f1, lrap
-
+    # Evaluation (from utils)
     results = {}
     for lang, lang_dataset in test_tf_datasets.items():
-        r_prec, micro_f1, macro_f1, lrap = evaluate_model(model, lang_dataset)
+        print(f"\n[INFO] Evaluating for {lang}")
+        metrics = evaluate_model(model, lang_dataset, batch_size=batch_size)
         results[lang] = {
-            "R-Precision": r_prec,
-            "Micro F1": micro_f1,
-            "Macro F1": macro_f1,
-            "LRAP": lrap
+            "R-Precision": metrics[0],
+            "Micro F1": metrics[1],
+            "Macro F1": metrics[2],
+            "LRAP": metrics[3],
+            "Eval Time": metrics[4]
         }
 
     return {
