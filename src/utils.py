@@ -5,7 +5,7 @@ from sklearn.metrics import f1_score, label_ranking_average_precision_score
 import os
 import psutil
 import tensorflow as tf
-from transformers import TFAutoModel, AutoConfig
+from transformers import AutoTokenizer, TFAutoModel, AutoConfig
 
 
 def r_precision(y_true, y_pred, top_k=10):
@@ -167,3 +167,49 @@ class AdapterXLMRModel(tf.keras.Model):
         logits = self.classifier(cls_output)
 
         return logits
+
+
+def load_label_embeddings(model_name='xlm-roberta-base', level='level_1', labels_path="data/labels"):
+    import json
+    import pandas as pd
+
+    with open(f"{labels_path}/eurovoc_descriptors.json", "r", encoding="utf-8") as f:
+        labels = json.load(f)
+    english_only = {k: v.get("en") for k, v in labels.items() if v.get("en")}
+    labels_df = pd.DataFrame(english_only.items(), columns=["label_id", "label_description"])
+
+    with open(f"{labels_path}/eurovoc_concepts.json", "r", encoding="utf-8") as f:
+        levels = json.load(f)
+
+    level_data = [
+        {"label_id": label_id, "level": lvl}
+        for lvl, ids in levels.items()
+        for label_id in ids
+    ]
+    df_levels = pd.DataFrame(level_data)
+
+    df_labels = labels_df.merge(df_levels, on="label_id")
+    df_labels = df_labels[df_labels["level"] == level]
+    label_texts = df_labels["label_description"].tolist()
+    label_ids = df_labels["label_id"].tolist()
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = TFAutoModel.from_pretrained(model_name)
+
+    inputs = tokenizer(label_texts, padding=True, truncation=True, return_tensors="tf")
+    outputs = model(**inputs)
+    embeddings = tf.reduce_mean(outputs.last_hidden_state, axis=1)
+    embeddings = tf.math.l2_normalize(embeddings, axis=1)
+
+    return label_ids, embeddings, tokenizer, model
+
+
+def predict_labels_batch(texts, tokenizer, model, label_embeddings, top_k=5):
+    prompts = [f"This legal document discusses the following topics: {txt}" for txt in texts]
+    encodings = tokenizer(prompts, return_tensors='tf', padding=True, truncation=True, max_length=512)
+    outputs = model(**encodings)
+    doc_embeddings = tf.reduce_mean(outputs.last_hidden_state, axis=1)
+    doc_embeddings = tf.math.l2_normalize(doc_embeddings, axis=1)
+    sims = tf.matmul(doc_embeddings, label_embeddings, transpose_b=True)
+    top_k_scores, top_k_indices = tf.math.top_k(sims, k=top_k)
+    return top_k_indices.numpy()
