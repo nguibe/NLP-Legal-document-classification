@@ -72,7 +72,7 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
         )
 
     train_tf_dataset = dataset_to_tf(train_dataset)
-    test_tf_datasets = {lang: dataset_to_tf(ds) for lang, ds in test_datasets.items()}
+    test_tf_datasets = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
 
     # Model setup
     model = TFAutoModelForSequenceClassification.from_pretrained(
@@ -95,10 +95,20 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
         model, train_tf_dataset, batch_size=batch_size, epochs=epochs
     )
 
-    # Evaluate per language
-    all_results = {}
-    for lang, tf_ds in test_tf_datasets.items():
-        print(f"\n[INFO] Evaluating on language: {lang}")
-        all_results[lang] = evaluate_model(model, tf_ds, batch_size=batch_size)
+    # Evaluation
+    results = {}
+    for lang, lang_dataset in test_tf_datasets.items():
+        print(f"[INFO] Evaluating on language: {lang}")
+        r_prec, micro_f1, macro_f1, lrap, eval_time = evaluate_model(
+            model, lang_dataset, batch_size=batch_size
+        )
+        results[lang] = {
+            "R-Precision": r_prec,
+            "Micro F1": micro_f1,
+            "Macro F1": macro_f1,
+            "LRAP": lrap,
+            "Eval Time (s)": eval_time
+        }
 
-    return all_results, model
+
+    return results
