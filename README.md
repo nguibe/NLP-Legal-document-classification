@@ -35,23 +35,32 @@ Their work highlights the limitations of standard multilingual fine-tuning for l
 
 ## Project Structure
 
-├── notebooks/
+├── data/ # with eurovocs labels and label descriptions in labels folder
 
-│ ├── 01_data_analysis.ipynb
-
-│ ├── 02_results_reproduction.ipynb
-
-│ └── 03_exploration_and_improvement.ipynb
+(├── model/ ) # temporary folder to store model weight (in gitingore de to size)
 
 ├── src/
 
-│ ├── model.py # model definition and adapter integration
+│ ├── adapter_model.py #  script corresponding to the second adaptation strategy in Notebook 2 (adapters)
 
-│ ├── training.py # training loop, metrics, evaluation
+│ ├── baseline_model.py # model fully retrained in english
 
-│ ├── utils.py 
+│ ├── frozen_model.py #   called in Notebook 2 as first adaptation strategy
 
-├── data/ 
+│ ├── label_embedding.py #   called in Notebook 3 as second adaptation strategy
+
+│ ├── prompt_model.py #   called in Notebook 3 as first adaptation strategy
+
+│ ├── utils.py # various utility functions called by the models for instance for evaluation or training with specific metrics and logs
+
+
+├── 1_data_analysis.ipynb
+
+├── 2_results_reproduction.ipynb
+
+└── 3_beyound_results_reproduction.ipynb
+
+├──  pdf report
 
 ├── .gitignore
 
