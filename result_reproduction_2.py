@@ -3,18 +3,12 @@ from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 import pandas as pd 
 from datasets import Dataset
 from sklearn.preprocessing import MultiLabelBinarizer
-#import torch
 from sklearn.metrics import f1_score, label_ranking_average_precision_score
-import os
 import time
 import psutil
 import numpy as np
 
 n_frozen_layer=3
-
-# Change to your project directory
-if not os.getcwd().endswith('NLP-Legal-document-classification'):
-    os.chdir('NLP-Legal-document-classification')
 
 # Log the start time for data loading
 start_time = time.time()
