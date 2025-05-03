@@ -1,15 +1,15 @@
-# Training with prompt
-
 import tensorflow as tf
 from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 import pandas as pd 
 from datasets import Dataset
 from sklearn.preprocessing import MultiLabelBinarizer
+import torch
 from sklearn.metrics import f1_score, label_ranking_average_precision_score
 import os
 import time
 import psutil
 import numpy as np
+
 
 # Change to your project directory
 if not os.getcwd().endswith('NLP-Legal-document-classification'):
@@ -157,8 +157,8 @@ final_test_df = pd.concat(test_dfs, ignore_index=True)
 print(f"[INFO] Combined test set in {time.time() - start_time:.2f} seconds")
 print(final_test_df.head())
 
-train_df = train_df.sample(5000, random_state=42)  # Randomly select 5 samples from training set
-final_test_df = final_test_df.sample(1000, random_state=42)
+train_df = train_df.sample(1000, random_state=42)  # Randomly select 5 samples from training set
+final_test_df = final_test_df.sample(5000, random_state=42)
 
 # ----------- Label encoding ----------------
 start_time = time.time()
@@ -198,12 +198,8 @@ start_time = time.time()
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 print(f"[INFO] Tokenizer loaded in {time.time() - start_time:.2f} seconds")
 
-def tokenize_with_prompt(batch):
-    prompt_texts = [
-        f"This legal document discusses the following topics: {text}. What legal categories apply?"
-        for text in batch['text']
-    ]
-    encodings = tokenizer(prompt_texts, padding='max_length', truncation=True, max_length=512)
+def tokenize_and_format_tf(batch):
+    encodings = tokenizer(batch['text'], padding='max_length', truncation=True, max_length=512)
     encodings['labels'] = batch['label_vector']
     return encodings
 
@@ -212,9 +208,9 @@ start_time = time.time()
 train_dataset = Dataset.from_pandas(train_df[["text", "label_vector"]])
 test_datasets = {lang: Dataset.from_pandas(df[["text", "label_vector"]]) for lang, df in final_test_df.groupby("lang")}
 
-train_dataset = train_dataset.map(tokenize_with_prompt, batched=True)
+train_dataset = train_dataset.map(tokenize_and_format_tf, batched=True)
 for lang in test_datasets:
-    test_datasets[lang] = test_datasets[lang].map(tokenize_with_prompt, batched=True)
+    test_datasets[lang] = test_datasets[lang].map(tokenize_and_format_tf, batched=True)
 print(f"[INFO] Tokenization completed in {time.time() - start_time:.2f} seconds")
 
 # Inspect the tokenized data
@@ -286,11 +282,8 @@ for lang in test_langs:
     if lang_specific_dataset is None:
         print(f"[INFO] No dataset found for {lang}. Skipping.")
         continue
-
+    print(f"[INFO] Evaluation for {lang} completed \n Evaluation results")
     results = evaluate_model(model, lang_specific_dataset)
-    print(f"[INFO] Evaluation for {lang} completed")
-    print(f"Language: {lang}")
-    print("Evaluation results:", results)
 
 
 #r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time = evaluate_model(model, test_tf_datasets["en"])

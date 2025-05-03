@@ -10,6 +10,7 @@ import time
 import psutil
 import numpy as np
 
+n_frozen_layer=12
 
 # Change to your project directory
 if not os.getcwd().endswith('NLP-Legal-document-classification'):
@@ -20,7 +21,7 @@ start_time = time.time()
 print(f"[INFO] Starting to load the dataset...")
 
 # Load the dataset
-df = pd.read_parquet('data/dataset/multi_eurlex_reduced.parquet', engine='pyarrow')
+df = pd.read_parquet('https://minio.lab.sspcloud.fr/nguibe/NLP/multi_eurlex_reduced.parquet', engine='pyarrow')
 print(f"[INFO] Dataset loaded in {time.time() - start_time:.2f} seconds")
 
 ################## FUNCTIONS ################
@@ -96,6 +97,23 @@ def evaluate_model(model, test_dataset, batch_size=32):
     
     return r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time
 
+def freeze_transformer_layers(model, N):
+    """
+    Freezes the first N encoder layers of the XLM-Roberta transformer.
+    
+    Parameters:
+        model (tf.keras.Model): The TensorFlow HuggingFace model.
+        N (int): Number of transformer layers to freeze.
+    """
+    try:
+        encoder = model.roberta.encoder.layer
+    except AttributeError:
+        raise ValueError("Expected model to have `roberta.encoder.layer` structure.")
+
+    for i in range(N):
+        encoder[i].trainable = False
+    print(f"[INFO] Successfully froze first {N} transformer layers.")
+
 # Function to track training time and memory usage
 def track_training_time_and_memory(model, train_dataset, batch_size=8, epochs=2):
     # Track training time
@@ -157,8 +175,8 @@ final_test_df = pd.concat(test_dfs, ignore_index=True)
 print(f"[INFO] Combined test set in {time.time() - start_time:.2f} seconds")
 print(final_test_df.head())
 
-train_df = train_df.sample(1000, random_state=42)  # Randomly select 5 samples from training set
-final_test_df = final_test_df.sample(5000, random_state=42)
+train_df = train_df.sample(5000, random_state=42)  # Randomly select 5 samples from training set
+final_test_df = final_test_df.sample(1000, random_state=42)
 
 # ----------- Label encoding ----------------
 start_time = time.time()
@@ -259,6 +277,12 @@ print(f"[INFO] Model initialized in {time.time() - start_time:.2f} seconds")
 timestamp = time.strftime("%Y%m%d-%H%M%S")
 model.save_pretrained(f"model/saved_model_pretrained_{timestamp}")
 
+# Freeze the first N transformer blocks (e.g., N = 6)
+freeze_transformer_layers(model, N=n_frozen_layer)
+
+for i, layer in enumerate(model.roberta.encoder.layer):
+    print(f"{n_frozen_layer} were frozen: \n Layer {i} trainable: {layer.trainable}")
+
 # Compile the model with appropriate loss and optimizer
 start_time = time.time()
 model.compile(optimizer='adam',
@@ -282,8 +306,11 @@ for lang in test_langs:
     if lang_specific_dataset is None:
         print(f"[INFO] No dataset found for {lang}. Skipping.")
         continue
-    print(f"[INFO] Evaluation for {lang} completed \n Evaluation results")
+
     results = evaluate_model(model, lang_specific_dataset)
+    print(f"[INFO] Evaluation for {lang} completed")
+    print(f"Language: {lang}")
+    print("Evaluation results:", results)
 
 
 #r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time = evaluate_model(model, test_tf_datasets["en"])

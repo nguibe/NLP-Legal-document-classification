@@ -3,14 +3,14 @@ from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 import pandas as pd 
 from datasets import Dataset
 from sklearn.preprocessing import MultiLabelBinarizer
-import torch
+#import torch
 from sklearn.metrics import f1_score, label_ranking_average_precision_score
 import os
 import time
 import psutil
 import numpy as np
 
-n_frozen_layer=12
+n_frozen_layer=3
 
 # Change to your project directory
 if not os.getcwd().endswith('NLP-Legal-document-classification'):
@@ -20,8 +20,8 @@ if not os.getcwd().endswith('NLP-Legal-document-classification'):
 start_time = time.time()
 print(f"[INFO] Starting to load the dataset...")
 
-# Load the dataset
-df = pd.read_parquet('data/dataset/multi_eurlex_reduced.parquet', engine='pyarrow')
+# Load the dataset from SSPCloud
+df = pd.read_parquet('https://minio.lab.sspcloud.fr/nguibe/NLP/multi_eurlex_reduced.parquet', engine='pyarrow')
 print(f"[INFO] Dataset loaded in {time.time() - start_time:.2f} seconds")
 
 ################## FUNCTIONS ################
