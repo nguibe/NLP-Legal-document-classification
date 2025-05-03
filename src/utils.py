@@ -31,50 +31,42 @@ def r_precision(y_true, y_pred, top_k=10):
 def evaluate_model(model, test_dataset, batch_size=32):
     start_time = time.time()
     
-    # Evaluate the model
     y_true = []
     y_pred = []
     
     for batch in test_dataset.batch(batch_size):
-        #input_ids = batch['input_ids']
-        #attention_mask = batch['attention_mask']
-        #(input_ids, attention_mask), labels = batch
-        #labels = batch['labels']
         inputs, labels = batch
         input_ids = inputs['input_ids']
         attention_mask = inputs['attention_mask']
         
-        # Get model predictions
-        logits = model(input_ids, attention_mask=attention_mask)[0]  # Directly access the first element
-        predictions = tf.sigmoid(logits).numpy()  # Apply sigmoid to get probabilities
-        #logits = model(input_ids, attention_mask=attention_mask)[0]
-        #predictions = tf.sigmoid(logits.logits).numpy()
+        # Check if model is AdapterXLMRModel or another model
+        if isinstance(model, AdapterXLMRModel):
+            logits = model({"input_ids": input_ids, "attention_mask": attention_mask}, training=False)
+        else:
+            # For other models that might return a tuple
+            outputs = model({"input_ids": input_ids, "attention_mask": attention_mask}, training=False)
+            logits = outputs[0]  # Assuming logits are the first element of the returned tuple
+
+        predictions = tf.sigmoid(logits).numpy()
         
-        y_true.extend(labels.numpy())
-        y_pred.extend(predictions)
+        y_true.extend(labels.numpy().tolist())
+        y_pred.extend(predictions.tolist())
     
-    # Convert to numpy arrays
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
+
+    assert y_true.shape == y_pred.shape, f"Shape mismatch: {y_true.shape} vs {y_pred.shape}"
     
-    # Calculate R-Precision
     r_precision_score = r_precision(y_true, y_pred)
-    
-    # Calculate Micro and Macro F1 Scores
-    micro_f1 = f1_score(y_true, (y_pred > 0.5), average='micro',zero_division=0)
-    macro_f1 = f1_score(y_true, (y_pred > 0.5), average='macro',zero_division=0)
-    
-    # Calculate Label Ranking Average Precision (LRAP)
+    micro_f1 = f1_score(y_true, (y_pred > 0.5), average='micro', zero_division=0)
+    macro_f1 = f1_score(y_true, (y_pred > 0.5), average='macro', zero_division=0)
     lrap_score = label_ranking_average_precision_score(y_true, y_pred)
     
-    # Log the results
+    evaluation_time = time.time() - start_time
     print(f"R-Precision: {r_precision_score:.4f}")
     print(f"Micro F1: {micro_f1:.4f}")
     print(f"Macro F1: {macro_f1:.4f}")
     print(f"LRAP: {lrap_score:.4f}")
-    
-    # Calculate evaluation time
-    evaluation_time = time.time() - start_time
     print(f"Evaluation time: {evaluation_time:.2f} seconds")
     
     return r_precision_score, micro_f1, macro_f1, lrap_score, evaluation_time
@@ -142,39 +134,35 @@ class AdapterXLMRModel(tf.keras.Model):
         self.num_labels = num_labels
         self.bottleneck_size = bottleneck_size
 
-        # Load pretrained XLM-RoBERTa model
         config = AutoConfig.from_pretrained("xlm-roberta-base", output_hidden_states=True)
         self.base_model = TFAutoModel.from_pretrained("xlm-roberta-base", config=config)
 
         if freeze_base:
             self.base_model.trainable = False
 
-        # Adapter layers: one for each transformer layer output
+        # Adapter layers: one per transformer layer
         self.adapters = [
             AdapterLayer(hidden_size=config.hidden_size, bottleneck_size=bottleneck_size)
             for _ in range(config.num_hidden_layers)
         ]
 
-        # Final classification head
         self.dropout = tf.keras.layers.Dropout(0.1)
         self.classifier = tf.keras.layers.Dense(num_labels)
 
-    def call(self, inputs, training=False):
+    def call(self, input_ids=None, attention_mask=None, training=False, **kwargs):
         base_outputs = self.base_model(
-            input_ids=inputs['input_ids'],
-            attention_mask=inputs['attention_mask'],
+            input_ids=input_ids,
+            attention_mask=attention_mask,
             training=training
         )
 
-        # Use hidden_states to access all transformer layer outputs
-        hidden_states = base_outputs.hidden_states  # tuple of length 13 (embeddings + 12 layers)
+        hidden_states = base_outputs.hidden_states
         x = hidden_states[-1]
 
-        # Apply adapters sequentially
-        for i, adapter in enumerate(self.adapters):
+        for adapter in self.adapters:
             x = adapter(x)
 
-        cls_output = x[:, 0, :]  # CLS token
+        cls_output = x[:, 0, :]
         cls_output = self.dropout(cls_output, training=training)
         logits = self.classifier(cls_output)
 
