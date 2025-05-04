@@ -1,12 +1,21 @@
-import os
-import time
-import psutil
+"""
+===========================================================
+Adapter-based multi-label classification model
+===========================================================
+
+This script implements a training pipeline for a multi-label classification task, 
+- our second adaptation strategy-, using an adapter-based approach with 
+the XLM-Roberta model. 
+===========================================================
+"""
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from datasets import Dataset
 from sklearn.preprocessing import MultiLabelBinarizer
 from transformers import AutoTokenizer
+
 from src.utils import AdapterXLMRModel, evaluate_model, track_training_time_and_memory
 
 
@@ -17,6 +26,28 @@ def run_adapter_training_pipeline(
     batch_size=8,
     epochs=2
 ):
+   """
+    Runs the adapter-based training pipeline for a multi-label classification task.
+
+    This function preprocesses the data, tokenizes the text, trains an adapter-enhanced XLM-Roberta model,
+    and evaluates its performance across different languages. It handles the training and evaluation 
+    of the model using a specified sample size, batch size, and number of epochs.
+
+    Parameters:
+        data (pandas.DataFrame): The dataset containing text and label data.
+        train_sample_size (int, optional): The number of training samples to use. Default is 1000.
+        test_sample_size (int, optional): The number of test samples to use. Default is 5000.
+        batch_size (int, optional): The batch size used for training and evaluation. Default is 8.
+        epochs (int, optional): The number of training epochs. Default is 2.
+
+    Returns:
+        dict: A dictionary containing evaluation results for each language. Each language has the following keys:
+            - "R-Precision": R-Precision score.
+            - "Micro F1": Micro F1 score.
+            - "Macro F1": Macro F1 score.
+            - "LRAP": Label Ranking Average Precision score.
+            - "Eval Time (s)": Time taken for evaluation in seconds.
+    """
     df = data.copy()
 
     # Preprocess
@@ -73,7 +104,7 @@ def run_adapter_training_pipeline(
         )
 
     train_tf = dataset_to_tf(train_dataset)
-    test_tf = {lang: dataset_to_tf(ds) for lang, ds in test_datasets.items()}
+    test_tf = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
 
     # Initialize adapter-enhanced model
     num_labels = len(mlb.classes_)

@@ -1,18 +1,28 @@
-import os
-import time
-import psutil
+"""
+===========================================================
+XLM-Roberta with layer freezing model
+===========================================================
+
+This script defines a multi-label classification pipeline using XLM-Roberta for training and evaluation. 
+It includes functionality to freeze a specified number of transformer layers during training to optimize 
+performance and memory usage, corresponding to the first adaptation strategy reproduced. 
+
+===========================================================
+"""
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from datasets import Dataset
-from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 from sklearn.preprocessing import MultiLabelBinarizer
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 
 from src.utils import (
     evaluate_model,
-    track_training_time_and_memory,
     freeze_transformer_layers,
+    track_training_time_and_memory,
 )
+
 
 def run_training_pipeline_with_freezing(
     df,
@@ -20,8 +30,29 @@ def run_training_pipeline_with_freezing(
     test_sample_size=1000,
     batch_size=8,
     epochs=2,
-    n_frozen_layer=12
+    n_frozen_layer=6
 ):
+    """
+    Runs the complete training and evaluation pipeline for a multi-label classification task using the XLM-Roberta model,
+    with an option to freeze the first N layers of the transformer model.
+
+    Parameters:
+        df (pandas.DataFrame): The dataset containing the training and test data with text and associated labels. 
+                                It must contain the columns 'split', 'text', and 'eurovoc_concepts'.
+        train_sample_size (int, optional): Number of samples to use for training. Default is 5000.
+        test_sample_size (int, optional): Number of samples to use for testing. Default is 1000.
+        batch_size (int, optional): Batch size for training. Default is 8.
+        epochs (int, optional): Number of epochs for training. Default is 2.
+        n_frozen_layer (int, optional): Number of transformer layers to freeze during training. Default is 6.
+
+    Returns:
+        dict: A dictionary containing the following keys:
+            - 'results': A dictionary of evaluation metrics (R-Precision, Micro F1, Macro F1, LRAP, Eval Time) for each language.
+            - 'training_time': Total time taken for training the model (in seconds).
+            - 'initial_memory': Memory usage (in MB) before training starts.
+            - 'final_memory': Memory usage (in MB) after training ends.
+            - 'model_params': Number of parameters in the model.
+    """
     test_langs = ["en", "fr", "de", "pl", "fi"]
 
     # Preprocessing

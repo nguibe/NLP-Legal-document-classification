@@ -1,15 +1,42 @@
-import os
-import time
-import psutil
-import numpy as np
+"""
+===========================================================
+Baseline model: Training on english and evaluating in other languages
+===========================================================
+
+This script defines a pipeline for training and evaluating a multi-label classification model 
+using the XLM-Roberta transformer model.
+
+===========================================================
+"""
+
 import pandas as pd
 import tensorflow as tf
-from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
-from sklearn.preprocessing import MultiLabelBinarizer
 from datasets import Dataset
+from sklearn.preprocessing import MultiLabelBinarizer
+from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
+
 from src.utils import evaluate_model, track_training_time_and_memory
 
+
 def run_training_pipeline(data, train_sample_size=1000, test_sample_size=5000, batch_size=8, epochs=2):
+    """
+    Runs the complete training and evaluation pipeline for a multi-label classification task using the XLM-Roberta model.
+
+    This function processes the input data, tokenizes it, sets up the model, and trains it in english using multi-label classification 
+    with a transformer-based model (XLM-Roberta). It also evaluates the model on test datasets across multiple languages 
+    and reports evaluation metrics.
+
+    Parameters:
+        data (pandas.DataFrame): The dataset containing the training and test data with text and associated labels.
+        train_sample_size (int, optional): Number of samples to use for training. Default is 1000.
+        test_sample_size (int, optional): Number of samples to use for testing. Default is 5000.
+        batch_size (int, optional): Batch size for training. Default is 8.
+        epochs (int, optional): Number of epochs for training. Default is 2.
+
+    Returns:
+        dict: A dictionary containing evaluation metrics (R-Precision, Micro F1, Macro F1, LRAP, Eval Time) 
+              for each language in the test set.
+    """
     df = data.copy()
 
     # Preprocess training and test sets
