@@ -7,7 +7,7 @@ import os
 
 
 def run_label_embedding_classification(df, top_k=5, batch_size=32, eval_lang='en'):
-    # Change to your project directory
+    # Ensure in project root directory
     if not os.getcwd().endswith('NLP-Legal-document-classification'):
         os.chdir('NLP-Legal-document-classification')
     # Load label embeddings

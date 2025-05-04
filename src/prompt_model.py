@@ -16,13 +16,12 @@ from src.utils import (
 )
 
 
-def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, freeze_layers=0):
+def run_prompt_classification(df, train_size, test_size, batch_size, epochs, prompt_type, freeze_layers=0):
 
+    # Preprocess
     df['level_1_labels'] = df['eurovoc_concepts'].apply(lambda d: d.get('level_1', []))
-    df = df[df['text'].apply(lambda x: isinstance(x, dict) and 'en' in x)].copy()
-    df['text'] = df['text'].apply(lambda x: x['en'])
-
-    train_df = df[df['split'] == 'train'].sample(train_size, random_state=42)
+    train_df = df[df['split'] == 'train'].copy()
+    train_df['text'] = train_df['text'].apply(lambda x: x.get("en") if isinstance(x, dict) else "")
     test_df = df[df['split'] == 'test']
 
     test_langs = ["en", "fr", "de", "pl", "fi"]
@@ -33,6 +32,9 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
         df_lang['lang'] = lang
         test_dfs.append(df_lang)
     final_test_df = pd.concat(test_dfs, ignore_index=True)
+
+    train_df = train_df.sample(train_size, random_state=42)
+    final_test_df = final_test_df.sample(test_size, random_state=42)
 
     mlb = MultiLabelBinarizer()
     mlb.fit(df['level_1_labels'])
@@ -71,8 +73,8 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
             )
         )
 
-    train_tf_dataset = dataset_to_tf(train_dataset)
-    test_tf_datasets = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
+    train_tf = dataset_to_tf(train_dataset)
+    test_tf = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
 
     # Model setup
     model = TFAutoModelForSequenceClassification.from_pretrained(
@@ -92,12 +94,12 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
 
     # Train with memory tracking
     training_time, mem_before, mem_after = track_training_time_and_memory(
-        model, train_tf_dataset, batch_size=batch_size, epochs=epochs
+        model, train_tf, batch_size=batch_size, epochs=epochs
     )
 
     # Evaluation
     results = {}
-    for lang, lang_dataset in test_tf_datasets.items():
+    for lang, lang_dataset in test_tf.items():
         print(f"[INFO] Evaluating on language: {lang}")
         r_prec, micro_f1, macro_f1, lrap, eval_time = evaluate_model(
             model, lang_dataset, batch_size=batch_size
@@ -109,6 +111,5 @@ def run_prompt_classification(df, train_size, batch_size, epochs, prompt_type, f
             "LRAP": lrap,
             "Eval Time (s)": eval_time
         }
-
 
     return results

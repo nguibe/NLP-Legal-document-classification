@@ -73,7 +73,7 @@ def run_adapter_training_pipeline(
         )
 
     train_tf = dataset_to_tf(train_dataset)
-    test_tf = {lang: dataset_to_tf(ds) for lang, ds in test_datasets.items()}
+    test_tf = {lang: dataset_to_tf(test_datasets[lang]) for lang in test_datasets}
 
     # Initialize adapter-enhanced model
     num_labels = len(mlb.classes_)
