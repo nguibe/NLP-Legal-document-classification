@@ -1,11 +1,15 @@
 # Functions used in the different models
-import numpy as np
-import time
-from sklearn.metrics import f1_score, label_ranking_average_precision_score
+import json
 import os
+import time
+
+import numpy as np
+import pandas as pd
 import psutil
 import tensorflow as tf
-from transformers import AutoTokenizer, TFAutoModel, AutoConfig
+from sklearn.metrics import f1_score, label_ranking_average_precision_score
+from transformers import AutoConfig, AutoTokenizer, TFAutoModel
+
 
 LABEL_DESCRIPTIONS = {
     '100142': 'politics',
@@ -34,7 +38,18 @@ LABEL_DESCRIPTIONS = {
 
 def r_precision(y_true, y_pred, top_k=10):
     """
-    R-Precision: Precision at top-k (where k is the number of relevant labels).
+    Compute R-Precision at top-k for multi-label classification.
+
+    R-Precision measures how many of the top-k predicted labels are actually relevant,
+    where k is a fixed number (default: 10).
+
+    Parameters:
+        y_true (np.ndarray): Binary ground truth labels (shape: [n_samples, n_labels]).
+        y_pred (np.ndarray): Predicted scores for each label (shape: [n_samples, n_labels]).
+        top_k (int): Number of top predictions to consider for precision (default: 10).
+
+    Returns:
+        float: Mean R-Precision score across all samples.
     """
     precision_list = []
     for i in range(len(y_true)):
@@ -53,6 +68,23 @@ def r_precision(y_true, y_pred, top_k=10):
 
 
 def evaluate_model(model, test_dataset, batch_size=32):
+    """
+    Evaluate a multi-label classification model on a test dataset for 
+    R-Precision, Micro F1, Macro F1, and LRAP metrics.
+
+    Parameters:
+        model (tf.keras.Model or AdapterXLMRModel): The trained model to evaluate.
+        test_dataset (tf.data.Dataset): The test dataset, containing inputs and labels.
+        batch_size (int): The batch size to use for evaluation (default: 32).
+
+    Returns:
+        tuple: A tuple containing the following evaluation metrics:
+            - R-Precision score (float)
+            - Micro F1 score (float)
+            - Macro F1 score (float)
+            - LRAP score (float)
+            - Evaluation time in seconds (float)
+    """
     start_time = time.time()
     
     y_true = []
@@ -98,11 +130,16 @@ def evaluate_model(model, test_dataset, batch_size=32):
 
 def freeze_transformer_layers(model, N):
     """
-    Freezes the first N encoder layers of the XLM-Roberta transformer.
-    
+    Freezes the first N encoder layers of the XLM-Roberta transformer model to prevent 
+    their weights from being updated during training, which can speed up training 
+    and reduce overfitting in some scenarios.
+
     Parameters:
-        model (tf.keras.Model): The TensorFlow HuggingFace model.
-        N (int): Number of transformer layers to freeze.
+        model (tf.keras.Model): The TensorFlow model (typically a HuggingFace model) to modify.
+        N (int): The number of transformer encoder layers to freeze (starting from the first layer).
+
+    Raises:
+        ValueError: If the model does not have the expected `roberta.encoder.layer` structure.
     """
     try:
         encoder = model.roberta.encoder.layer
@@ -115,6 +152,21 @@ def freeze_transformer_layers(model, N):
 
 
 def track_training_time_and_memory(model, train_dataset, batch_size=32, epochs=2):
+     """
+    Tracks training time and memory usage during model training.
+
+    Parameters:
+        model (tf.keras.Model): The TensorFlow model to train.
+        train_dataset (tf.data.Dataset): The training dataset to use for training.
+        batch_size (int): The batch size used during training (default: 32).
+        epochs (int): The number of epochs to train the model (default: 2).
+
+    Returns:
+        tuple: A tuple containing:
+            - training_time (float): The time taken to train the model (in seconds).
+            - initial_memory (float): The memory usage before training (in MB).
+            - final_memory (float): The memory usage after training (in MB).
+    """
     # Track training time
     start_time = time.time()
     
@@ -141,6 +193,23 @@ def track_training_time_and_memory(model, train_dataset, batch_size=32, epochs=2
 
 
 class AdapterLayer(tf.keras.layers.Layer):
+     """
+    A custom Keras layer implementing an adapter for transformer-based models.
+
+    This adapter layer consists of a bottleneck architecture where the input is first projected 
+    down to a smaller size (bottleneck size), then projected back up to the original hidden size. 
+    A residual connection is added to the output to allow for better gradient flow.
+
+    Parameters:
+        hidden_size (int): The size of the input and output of the adapter layer.
+        bottleneck_size (int): The size of the bottleneck layer, used to reduce the dimensionality 
+                               before projecting back to the hidden size (default: 64).
+        **kwargs: Additional arguments passed to the parent class.
+
+    Returns:
+        tf.Tensor: The output tensor with the same shape as the input, after applying the down-projection, 
+                   up-projection, and residual connection.
+    """
     def __init__(self, hidden_size, bottleneck_size=64, **kwargs):
         super().__init__(**kwargs)
         self.down_proj = tf.keras.layers.Dense(bottleneck_size, activation='relu')
@@ -153,6 +222,35 @@ class AdapterLayer(tf.keras.layers.Layer):
 
 
 class AdapterXLMRModel(tf.keras.Model):
+    """
+    A custom Keras model implementing an adapter-based approach on top of XLM-RoBERTa.
+
+    This model uses XLM-RoBERTa as a base transformer model and adds adapter layers on top of each 
+    transformer layer in the base model. The adapters are used to introduce lightweight modifications 
+    to the model while retaining the original pretrained weights. Optionally, the base transformer model 
+    can be frozen to prevent further training on the base layers.
+
+    Parameters:
+        num_labels (int): The number of output labels for classification.
+        bottleneck_size (int): The size of the bottleneck layer in the adapter (default: 64).
+        freeze_base (bool): Whether to freeze the base transformer model layers during training 
+                             (default: False).
+        **kwargs: Additional arguments passed to the parent class.
+
+    Attributes:
+        base_model (TFAutoModel): The XLM-RoBERTa model used as the base.
+        adapters (list): A list of AdapterLayer objects, one for each transformer layer in the base model.
+        dropout (tf.keras.layers.Dropout): A dropout layer to prevent overfitting.
+        classifier (tf.keras.layers.Dense): A dense layer for classification output.
+
+    Methods:
+        call(input_ids, attention_mask, training=False, **kwargs):
+            Performs the forward pass of the model, applying the base model, adapter layers, 
+            and classification layer to the input data.
+
+    Returns:
+        logits (tf.Tensor): The predicted logits for each input, used for classification.
+    """
     def __init__(self, num_labels, bottleneck_size=64, freeze_base=False, **kwargs):
         super().__init__(**kwargs)
         self.num_labels = num_labels
@@ -194,8 +292,22 @@ class AdapterXLMRModel(tf.keras.Model):
 
 
 def load_label_embeddings(model_name='xlm-roberta-base', level='level_1', labels_path="data/labels"):
-    import json
-    import pandas as pd
+    """
+    Loads label embeddings for a given level of Eurovoc concepts using a transformer model.
+
+    Parameters:
+        model_name (str): The name of the pre-trained transformer model to use (default: 'xlm-roberta-base').
+        level (str): The Eurovoc level to filter labels by (default: 'level_1').
+        labels_path (str): The path to the folder containing the Eurovoc labels and concepts JSON files 
+                           (default: "data/labels").
+
+    Returns:
+        label_ids (list): A list of label IDs for the selected level.
+        embeddings (tf.Tensor): A tensor containing the embeddings of the label descriptions, 
+                                normalized using L2 normalization.
+        tokenizer (transformers.AutoTokenizer): The tokenizer used for generating embeddings.
+        model (TFAutoModel): The pre-trained transformer model used for generating embeddings.
+    """
 
     with open(f"{labels_path}/eurovoc_descriptors.json", "r", encoding="utf-8") as f:
         labels = json.load(f)
@@ -229,6 +341,19 @@ def load_label_embeddings(model_name='xlm-roberta-base', level='level_1', labels
 
 
 def predict_labels_batch(texts, tokenizer, model, label_embeddings, top_k=5):
+     """
+    Predicts the top-k relevant labels for a batch of input texts using a pre-trained model and label embeddings.
+    Parameters:
+        texts (list of str): A list of input texts (e.g., legal documents) for which labels are to be predicted.
+        tokenizer (transformers.AutoTokenizer): The tokenizer used to preprocess the input texts.
+        model (TFAutoModel): The pre-trained model used to compute document embeddings.
+        label_embeddings (tf.Tensor): Pre-computed embeddings for the labels (e.g., Eurovoc concepts).
+        top_k (int): The number of top relevant labels to return for each document (default: 5).
+
+    Returns:
+        numpy.ndarray: An array of shape (batch_size, top_k) containing the indices of the top-k most relevant labels 
+                       for each input text in the batch.
+    """
     prompts = [f"This legal document discusses the following topics: {txt}" for txt in texts]
     encodings = tokenizer(prompts, return_tensors='tf', padding=True, truncation=True, max_length=512)
     outputs = model(**encodings)
@@ -240,6 +365,18 @@ def predict_labels_batch(texts, tokenizer, model, label_embeddings, top_k=5):
 
 
 def generate_prompt(text, prompt_type="generic"):
+    """
+    Generates a prompt for text classification based on the type of prompt.
+    
+    Parameters:
+        text (str): The input text (e.g., a legal document) for which the prompt is to be generated.
+        prompt_type (str): The type of prompt to generate. It can either be "generic" or "guided" (default: "generic").
+
+    Returns:
+        str: A formatted prompt string based on the specified `prompt_type`.
+            - "generic": A general prompt asking for legal categories.
+            - "guided": A more specific prompt with a list of relevant categories.
+    """
     if prompt_type == "guided":
         return (
             f"This legal document is about: {text}. "

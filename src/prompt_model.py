@@ -1,22 +1,53 @@
-import os
-import time
+"""
+===========================================================
+Prompt-based multi-label classification with XLM-Roberta
+===========================================================
+
+This function performs multi-label classification on a given dataset using a prompt-based approach with 
+XLM-Roberta,- our first "original" adaptation strategy. The model predicts labels for each document based 
+on a prompt generated from the document text. 
+The function allows freezing layers of the model for fine-tuning. 
+
+===========================================================
+"""
+
 import pandas as pd
-import numpy as np
 import tensorflow as tf
 from datasets import Dataset
 from sklearn.preprocessing import MultiLabelBinarizer
 from transformers import AutoTokenizer, TFAutoModelForSequenceClassification
 
 from src.utils import (
-    generate_prompt,
+    LABEL_DESCRIPTIONS,
     evaluate_model,
     freeze_transformer_layers,
+    generate_prompt,
     track_training_time_and_memory,
-    LABEL_DESCRIPTIONS,
 )
 
 
 def run_prompt_classification(df, train_size, test_size, batch_size, epochs, prompt_type, freeze_layers=0):
+    """
+    Runs multi-label classification with a prompt-based approach using XLM-Roberta, and evaluates the model 
+    performance on a multilingual test set.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the dataset with 'text' and 'eurovoc_concepts' columns.
+        train_size (int): Number of training samples to use.
+        test_size (int): Number of test samples to use.
+        batch_size (int): Batch size for training and evaluation.
+        epochs (int): Number of training epochs.
+        prompt_type (str): Type of prompt to generate for each document ('generic' or 'guided').
+        freeze_layers (int, optional): Number of layers to freeze in the transformer model. Default is 0 (no layers frozen).
+
+    Returns:
+        dict: A dictionary containing evaluation results for each language in the test set:
+            - "R-Precision": The R-Precision score.
+            - "Micro F1": The Micro F1 score.
+            - "Macro F1": The Macro F1 score.
+            - "LRAP": The Label Ranking Average Precision score.
+            - "Eval Time (s)": The evaluation time in seconds.
+    """
 
     # Preprocess
     df['level_1_labels'] = df['eurovoc_concepts'].apply(lambda d: d.get('level_1', []))
