@@ -25,12 +25,39 @@ Their work highlights the limitations of standard multilingual fine-tuning for l
   - 🇫🇷 French (Romance)  
   - 🇩🇪 German (Germanic)  
   - 🇵🇱 Polish (Slavic)  
-  - 🇫🇮 Finnish (Uralic)  
+  - 🇫🇮 Finnish (Uralic)
+
+### Reproducibility & Data Access
+
+#### 1. Data Analysis (Part 1)
+
+The full dataset contains rich metadata (e.g., publication date) that is **not accessible** via the usual Hugging Face `load_dataset` interface.  
+To reproduce the data analysis as closely as possible, we recommend:
+
+- Downloading the full dataset archive (`multi_eurlex.tar.gz`, ~2.7 GB) from Hugging Face,  
+- Extracting it locally into a dedicated folder, and  
+- Updating script paths to point to this local copy.
+
+> ⚠️ While remote extraction is technically possible, we **do not recommend it** due to the file size and risk of incomplete decompression or corrupted downloads.  
+> A template script is nevertheless provided in the notebook.
+
+#### 2. Model Training & Evaluation (Parts 2 & 3)
+
+For all modeling experiments, we use a **preprocessed and reduced version** of the dataset, containing only the essential fields (`law_id`, `text`, `level_1_labels`, `split`).
+
+This simplified dataset is generated during the data analysis phase and stored as a `.parquet` file in the `data/` folder.  
+It is:
+
+- **Synchronized via S3**,  
+- **Excluded from version control** (via `.gitignore`),  
+- **Not necessary to regenerate**, for those only looking to reproduce results.
+
+This makes experiments fully reproducible without requiring the full original archive.
 
 ## Model Architecture
 
 - **Base Model**: `XLM-Roberta-base`  
-- **Adaptation Strategy**: Adapters inserted after FF layers, with frozen layers (varied N ∈ {3, 6, 9, 12})
+- **Adaptation Strategy**: Adapters inserted after FF layers and / or frozen layers (N ∈ {3, 6, 9, 12})
 - **Implementation**: Custom training functions located in `src/`, imported into notebooks
 
 ## Project Structure
@@ -77,14 +104,13 @@ Exploratory analysis of:
 
 ### 2. 📁 `notebooks/02_results_reproduction.ipynb`
 Reproduces two key observations from the paper:
-- 🔻 **Retraining on English** causes performance degradation on other languages (catastrophic forgetting)
-- 🔼 **Adapter-based fine-tuning** partially restores multilingual performance with reduced compute and memory cost
+- **Retraining on English** causes performance degradation on other languages (catastrophic forgetting)
+- **Adapter-based fine-tuning** partially restores multilingual performance with reduced compute and memory cost
 
 ### 3. 📁 `notebooks/03_exploration_and_improvement.ipynb`
 Original experimental ideas:
-- Manual analysis of token-label co-occurrence across languages  
-- Pattern mining (e.g., use of legal Latin roots, NER, citation structure)  
-- Attempt to infer categories without full model retraining  
+- (Manual analysis of token-label co-occurrence across languages)
+- (Pattern mining (e.g., use of legal Latin roots, NER, citation structure)) 
 - Optional low-cost strategies (label embeddings, prompts)
 
 ## Limitations
